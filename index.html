@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="dashboard-grid">
+
+    <!-- Widget 1: Greeting -->
+    <section id="greeting-widget" class="widget">
+      <h1 id="greeting-text"></h1>
+      <p id="clock-display"></p>
+      <p id="date-display"></p>
+    </section>
+
+    <!-- Widget 2: Focus Timer -->
+    <section id="timer-widget" class="widget">
+      <h2>Focus Timer</h2>
+      <p id="timer-display">25:00</p>
+      <div class="timer-controls">
+        <button id="timer-start">Start</button>
+        <button id="timer-stop" disabled>Stop</button>
+        <button id="timer-reset">Reset</button>
+      </div>
+      <div id="timer-notification" hidden>Session complete! Take a break.</div>
+    </section>
+
+    <!-- Widget 3: To-Do List -->
+    <section id="task-widget" class="widget">
+      <h2>To-Do</h2>
+      <div class="task-input-row">
+        <input id="task-input" type="text" placeholder="Add a task..." />
+        <button id="task-add-btn">Add</button>
+      </div>
+      <ul id="task-list"></ul>
+      <p id="task-empty-msg">No tasks yet. Add one above!</p>
+    </section>
+
+    <!-- Widget 4: Quick Links -->
+    <section id="quicklinks-widget" class="widget">
+      <h2>Quick Links</h2>
+      <div class="link-input-row">
+        <input id="link-label-input" type="text" placeholder="Label" />
+        <input id="link-url-input" type="url" placeholder="https://..." />
+        <button id="link-add-btn">Add</button>
+      </div>
+      <ul id="link-list"></ul>
+      <p id="link-empty-msg">No links saved yet.</p>
+    </section>
+
+  </div>
+
+  <script src="js/app.js" defer></script>
+</body>
+</html>
