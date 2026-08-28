@@ -1,58 +1,73 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard</title>
-  <link rel="stylesheet" href="css/style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Personal Dashboard</title>
+  <link rel="stylesheet" href="style.css">
 </head>
-<body>
-  <div class="dashboard-grid">
+<body class="light">
 
-    <!-- Widget 1: Greeting -->
-    <section id="greeting-widget" class="widget">
-      <h1 id="greeting-text"></h1>
-      <p id="clock-display"></p>
-      <p id="date-display"></p>
-    </section>
+  <div class="container">
+    <!-- Header & Greeting section -->
+    <header class="card">
+      <div class="header-top">
+        <button id="theme-toggle">🌙 Dark Mode</button>
+      </div>
+      <h1 id="greeting-text">Selamat Datang!</h1>
+      <p id="current-datetime">Loading date & time...</p>
+      
+      <!-- Custom Name -->
+      <div class="name-input-group">
+        <input type="text" id="name-input" placeholder="Masukkan nama Anda...">
+        <button id="save-name-btn">Simpan Nama</button>
+      </div>
+    </header>
 
-    <!-- Widget 2: Focus Timer -->
-    <section id="timer-widget" class="widget">
+    <!-- Focus Timer section -->
+    <section class="card">
       <h2>Focus Timer</h2>
-      <p id="timer-display">25:00</p>
+      <div class="timer-display" id="timer-display">25:00</div>
+      
+      <!-- Custom Timer Input -->
+      <div class="timer-settings">
+        <label for="custom-minutes">Durasi (Menit): </label>
+        <input type="number" id="custom-minutes" min="1" max="120" value="25">
+        <button id="set-timer-btn">Atur Waktu</button>
+      </div>
+
       <div class="timer-controls">
-        <button id="timer-start">Start</button>
-        <button id="timer-stop" disabled>Stop</button>
-        <button id="timer-reset">Reset</button>
+        <button id="start-btn">Start</button>
+        <button id="stop-btn">Stop</button>
+        <button id="reset-btn">Reset</button>
       </div>
-      <div id="timer-notification" hidden>Session complete! Take a break.</div>
     </section>
 
-    <!-- Widget 3: To-Do List -->
-    <section id="task-widget" class="widget">
-      <h2>To-Do</h2>
-      <div class="task-input-row">
-        <input id="task-input" type="text" placeholder="Add a task..." />
-        <button id="task-add-btn">Add</button>
+    <!-- To-Do List section -->
+    <section class="card">
+      <h2>To-Do List</h2>
+      <div class="todo-input-group">
+        <input type="text" id="todo-input" placeholder="Tambah tugas baru...">
+        <button id="add-todo-btn">Tambah</button>
       </div>
-      <ul id="task-list"></ul>
-      <p id="task-empty-msg">No tasks yet. Add one above!</p>
+      <div class="todo-tools">
+        <button id="sort-todo-btn">Sort A-Z</button>
+      </div>
+      <ul id="todo-list"></ul>
     </section>
 
-    <!-- Widget 4: Quick Links -->
-    <section id="quicklinks-widget" class="widget">
+    <!-- Quick Links section -->
+    <section class="card">
       <h2>Quick Links</h2>
-      <div class="link-input-row">
-        <input id="link-label-input" type="text" placeholder="Label" />
-        <input id="link-url-input" type="url" placeholder="https://..." />
-        <button id="link-add-btn">Add</button>
+      <div class="link-input-group">
+        <input type="text" id="link-name" placeholder="Nama Situs (e.g. Google)">
+        <input type="url" id="link-url" placeholder="URL (https://...)">
+        <button id="add-link-btn">Tambah Link</button>
       </div>
-      <ul id="link-list"></ul>
-      <p id="link-empty-msg">No links saved yet.</p>
+      <div id="quick-links-container" class="links-grid"></div>
     </section>
-
   </div>
 
-  <script src="js/app.js" defer></script>
+  <script src="script.js"></script>
 </body>
 </html>

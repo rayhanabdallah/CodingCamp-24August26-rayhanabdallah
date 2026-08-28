@@ -1,294 +1,167 @@
 :root {
-  /* Colour Palette */
-  --color-bg:         #f5f5f0;
-  --color-surface:    #ffffff;
-  --color-border:     #e0e0da;
-  --color-text:       #2c2c2c;
-  --color-text-muted: #888880;
-  --color-primary:    #4f7cff;
-  --color-danger:     #e05555;
-  --color-done:       #aaaaaa;
-
-  /* Typography */
-  --font-family:      'Segoe UI', system-ui, sans-serif;
-  --font-size-base:   16px;
-  --font-size-clock:  2.5rem;
-  --font-size-timer:  3rem;
-
-  /* Spacing */
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-
-  /* Border Radius */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 16px;
+  --bg-color: #f0f2f5;
+  --card-bg: #ffffff;
+  --text-color: #333333;
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
+  --danger: #ef4444;
+  --border-color: #e5e7eb;
 }
 
-/* ================================================================
-   TASK 4.2: Global reset, body, and .dashboard-grid
-   Requirements: TC-3
-   ================================================================ */
-
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+body.dark {
+  --bg-color: #0f172a;
+  --card-bg: #1e293b;
+  --text-color: #f8fafc;
+  --primary: #60a5fa;
+  --primary-hover: #3b82f6;
+  --danger: #f87171;
+  --border-color: #334155;
 }
 
 body {
-  background: var(--color-bg);
-  font-family: var(--font-family);
-  font-size: var(--font-size-base);
-  color: var(--color-text);
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 20px;
+  transition: background-color 0.3s, color 0.3s;
 }
 
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-lg);
-  padding: var(--space-xl);
-  max-width: 1100px;
+.container {
+  max-width: 650px;
   margin: 0 auto;
 }
 
-@media (max-width: 768px) {
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-    padding: var(--space-md);
-  }
+.card {
+  background-color: var(--card-bg);
+  padding: 20px 25px;
+  margin-bottom: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--border-color);
 }
 
-/* ================================================================
-   TASK 4.3: .widget base class and Greeting widget
-   Requirements: 1.1, 2.1
-   ================================================================ */
-
-.widget {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-lg);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+.header-top {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
 }
 
-#greeting-text {
-  font-size: 2rem;
-  font-weight: 300;
-  margin-bottom: 0;
+h1, h2 {
+  margin-top: 0;
 }
 
-#clock-display {
-  font-family: monospace;
-  font-size: var(--font-size-clock);
+input[type="text"], input[type="url"], input[type="number"] {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background-color: var(--card-bg);
+  color: var(--text-color);
+  font-size: 14px;
+}
+
+button {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: opacity 0.2s;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+.btn-primary { background-color: var(--primary); color: white; }
+.btn-secondary { background-color: #64748b; color: white; }
+.btn-warning { background-color: #f59e0b; color: white; }
+.btn-edit { background-color: #eab308; color: white; padding: 4px 8px; font-size: 12px; margin-right: 5px; }
+.btn-delete { background-color: var(--danger); color: white; padding: 4px 8px; font-size: 12px; }
+
+/* Timer */
+.timer-display {
+  font-size: 3.5rem;
+  font-weight: bold;
   text-align: center;
-  margin: var(--space-sm) 0;
+  margin: 15px 0;
+  letter-spacing: 2px;
 }
 
-#date-display {
-  color: var(--color-text-muted);
-  font-size: 0.9rem;
-  text-align: center;
-}
-
-/* ================================================================
-   TASK 4.4: Focus Timer widget
-   Requirements: 4.1, 6.1
-   ================================================================ */
-
-#timer-display {
-  font-family: monospace;
-  font-size: var(--font-size-timer);
-  text-align: center;
-  margin: var(--space-md) 0;
+.timer-settings, .todo-input-group, .link-input-group {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+  align-items: center;
 }
 
 .timer-controls {
   display: flex;
-  flex-direction: row;
-  gap: var(--space-sm);
   justify-content: center;
+  gap: 10px;
 }
 
-.timer-controls button {
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
-  cursor: pointer;
+/* To-Do List */
+.todo-tools {
+  margin-bottom: 10px;
 }
 
-#timer-start {
-  background: var(--color-primary);
-  color: #fff;
-  border-color: var(--color-primary);
-}
-
-.timer-controls button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-#timer-notification {
-  display: none;
-  margin-top: var(--space-md);
-  padding: var(--space-sm) var(--space-md);
-  border: 2px solid var(--color-primary);
-  border-radius: var(--radius-sm);
-  color: var(--color-primary);
-  text-align: center;
-}
-
-#timer-notification:not([hidden]) {
-  display: block;
-}
-
-/* ================================================================
-   TASK 4.5: To-Do List widget
-   Requirements: 7.1, 8.2, 8.3, 9.1
-   ================================================================ */
-
-.task-input-row {
-  display: flex;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-md);
-}
-
-.task-input-row input {
-  flex: 1;
-  padding: var(--space-sm);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-base);
-}
-
-.task-input-row button,
-#task-add-btn {
-  padding: var(--space-sm) var(--space-md);
-  background: var(--color-primary);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-#task-list {
+ul {
   list-style: none;
   padding: 0;
+  margin: 0;
 }
 
-#task-list li {
+li {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) 0;
-  border-bottom: 1px solid var(--color-border);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
 }
 
-.task-text.completed {
+li span {
+  cursor: pointer;
+  flex-grow: 1;
+}
+
+li.completed span {
   text-decoration: line-through;
-  color: var(--color-done);
+  opacity: 0.5;
 }
 
-.task-edit-btn,
-.task-delete-btn {
-  margin-left: auto;
-  padding: var(--space-xs) var(--space-sm);
-  font-size: 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  cursor: pointer;
-}
-
-.task-delete-btn {
-  color: var(--color-danger);
-  border-color: var(--color-danger);
-}
-
-#task-empty-msg {
-  color: var(--color-text-muted);
-  font-size: 0.9rem;
+.empty-text {
   text-align: center;
-  padding: var(--space-md) 0;
+  color: #94a3b8;
+  font-style: italic;
 }
 
-/* ================================================================
-   TASK 4.6: Quick Links widget
-   Requirements: 12.1, 13.2
-   ================================================================ */
-
-.link-input-row {
+/* Quick Links */
+.links-grid {
   display: flex;
+  gap: 10px;
   flex-wrap: wrap;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-md);
 }
 
-.link-input-row input {
-  flex: 1;
-  min-width: 80px;
-  padding: var(--space-sm);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-base);
-}
-
-.link-input-row button,
-#link-add-btn {
-  padding: var(--space-sm) var(--space-md);
-  background: var(--color-primary);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-#link-list {
-  list-style: none;
-  padding: 0;
-}
-
-#link-list li {
+.link-item-wrapper {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) 0;
-  border-bottom: 1px solid var(--color-border);
+  background-color: var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
-a.quick-link {
-  color: var(--color-primary);
+.link-btn {
+  padding: 8px 12px;
+  color: var(--text-color);
   text-decoration: none;
-  flex: 1;
+  font-weight: 500;
 }
 
-a.quick-link:hover {
-  text-decoration: underline;
-}
-
-.link-delete-btn {
-  margin-left: auto;
-  padding: var(--space-xs) var(--space-sm);
-  font-size: 0.75rem;
-  color: var(--color-danger);
-  border: 1px solid var(--color-danger);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  cursor: pointer;
-}
-
-#link-empty-msg {
-  color: var(--color-text-muted);
-  font-size: 0.9rem;
-  text-align: center;
-  padding: var(--space-md) 0;
-}
-
-.input-error {
-  border-color: var(--color-danger) !important;
+.link-del {
+  background: transparent;
+  color: var(--danger);
+  font-weight: bold;
+  padding: 0 8px;
+  height: 100%;
 }

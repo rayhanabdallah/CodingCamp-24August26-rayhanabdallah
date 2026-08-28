@@ -2,7 +2,9 @@
 
 ## Overview
 
-Build a fully client-side dashboard as three files: `index.html`, `css/style.css`, and `js/app.js`. All logic is Vanilla JavaScript organised into five comment-banner modules (Storage, Greeting, Timer, Task, QuickLinks) plus an INIT section. Data is persisted to `localStorage`. No build tools or dependencies are required to run the app.
+Build a fully client-side dashboard as three files: `index.html`, `css/style.css`, and `js/app.js`. All logic is Vanilla JavaScript organised into six comment-banner modules (Storage, Theme, Greeting, Timer, Task, QuickLinks) plus an INIT section. Data is persisted to `localStorage`. No build tools or dependencies are required to run the app.
+
+Tasks 1–14 cover the original dashboard (Requirements 1–15). Tasks 15–20 extend the dashboard with five new features: light/dark theme (Req 16), a custom greeting name (Req 17), a configurable Focus Timer duration (Req 18), duplicate-task prevention (Req 19), and to-do list sorting (Req 20). Property-based tests for the new work validate design Properties 18–28.
 
 ---
 
@@ -194,6 +196,154 @@ Build a fully client-side dashboard as three files: `index.html`, `css/style.css
   - Verify: 2×2 grid on wide viewport, single-column on ≤768 px
   - Ensure all tests pass, ask the user if questions arise.
 
+- [ ] 15. Light / Dark Mode (Req 16)
+  - [ ] 15.1 Add the theme toggle top bar and inline theme-bootstrap script to `index.html`
+    - Add the `<header class="top-bar">` above `.dashboard-grid` containing `<button id="theme-toggle" aria-label="Toggle light and dark theme">`
+    - Add the inline `<script>` in `<head>` that reads `todo_dashboard_theme` from `localStorage` (wrapped in `try/catch`) and sets `data-theme` (`'dark'` or `'light'`) on `document.documentElement` synchronously before CSS paints, defaulting to `'light'` on any error
+    - _Requirements: 16.1, 16.3, 16.4_
+
+  - [ ] 15.2 Add dark-theme CSS token overrides, document-root background wiring, and `.top-bar` styles to `css/style.css`
+    - Add the `[data-theme="dark"]` selector that overrides the colour tokens (`--color-bg`, `--color-surface`, `--color-border`, `--color-text`, `--color-text-muted`, `--color-primary`, `--color-danger`, `--color-done`)
+    - Set `html` and `body` `background`/`color` from the tokens so the theme covers the whole viewport
+    - Add `.top-bar` (flex, right-aligned, padded, centred max-width) and style `#theme-toggle` as a compact secondary button
+    - _Requirements: 16.1_
+
+  - [ ] 15.3 Add the `// === THEME MODULE ===` section to `js/app.js`
+    - Add `const STORAGE_KEY_THEME = 'todo_dashboard_theme'` to the STORAGE MODULE key constants
+    - Implement `applyTheme(theme)`: set the `data-theme` attribute on `document.documentElement` to the given theme
+    - Implement `toggleTheme()`: read the current `data-theme`, switch to the other value, call `applyTheme`, and `storageSave(STORAGE_KEY_THEME, ...)` the new value
+    - Implement `initTheme()`: `storageLoad(STORAGE_KEY_THEME, 'light')`, `applyTheme` the result, and wire the `#theme-toggle` click handler to `toggleTheme`
+    - _Requirements: 16.1, 16.2, 16.3, 16.4_
+
+  - [ ] 15.4 Wire `initTheme()` first in the `DOMContentLoaded` sequence
+    - Update the `DOMContentLoaded` handler in the INIT section so `initTheme()` is called before `initGreeting()`, `initTimer()`, `initTasks()`, and `initQuickLinks()` (theme applied before widgets render)
+    - _Requirements: 16.3_
+
+  - [ ]* 15.5 Write unit tests for the Theme module in `theme.test.js`
+    - Test `applyTheme('dark')` / `applyTheme('light')` set the correct `data-theme` on the document root
+    - Test `toggleTheme()` flips the theme and persists the new value
+    - _Requirements: 16.1, 16.2_
+
+- [ ] 16. Custom Greeting Name (Req 17)
+  - [ ] 16.1 Add the name entry controls to the greeting widget in `index.html` and CSS
+    - Add `<div class="name-input-row">` inside `#greeting-widget` containing `#name-input` (text) and `#name-save-btn`
+    - Add `.name-input-row` styles to `css/style.css` (flex row, `#name-input` grows via `flex:1`, button fixed width)
+    - _Requirements: 17.1_
+
+  - [ ] 16.2 Add `composeGreeting` and `setPersonalName` and personal-name state to the GREETING MODULE
+    - Add `const STORAGE_KEY_NAME = 'todo_dashboard_name'` to the STORAGE MODULE key constants and `let personalName = ''` module state
+    - Implement `composeGreeting(hour, name)`: return `getGreeting(hour) + ', ' + name.trim()` when `name` is non-empty after trim, otherwise return `getGreeting(hour)` unchanged
+    - Implement `setPersonalName(name)`: reject empty/whitespace (return `false`, leave `personalName` unchanged); on success trim and store `personalName`, `storageSave(STORAGE_KEY_NAME, ...)`, re-render greeting, return `true`
+    - _Requirements: 17.1, 17.2, 17.5_
+
+  - [ ] 16.3 Update `tickClock` and `initGreeting` to load, use, and persist the personal name
+    - Update `tickClock` to set `#greeting-text` via `composeGreeting(hour, personalName)` instead of `getGreeting(hour)`
+    - Update `initGreeting` to `storageLoad(STORAGE_KEY_NAME, '')` into `personalName`, pre-fill `#name-input`, and wire `#name-save-btn` click and `#name-input` Enter key to `setPersonalName`
+    - _Requirements: 17.1, 17.3, 17.4_
+
+  - [ ]* 16.4 Write property test for `composeGreeting` with a valid name in `greeting.test.js`
+    - **Property 18: composeGreeting appends a valid personal name**
+    - **Validates: Requirements 17.1**
+
+  - [ ]* 16.5 Write property test for `composeGreeting` with an empty name in `greeting.test.js`
+    - **Property 19: composeGreeting omits an empty personal name**
+    - **Validates: Requirements 17.4**
+
+  - [ ]* 16.6 Write property test for `setPersonalName` rejection in `greeting.test.js`
+    - **Property 20: setPersonalName rejects empty or whitespace-only names**
+    - **Validates: Requirements 17.5**
+
+- [ ] 17. Configurable Focus Timer Duration (Req 18)
+  - [ ] 17.1 Add the duration controls to the timer widget in `index.html` and CSS
+    - Add `<div class="timer-duration-row">` inside `#timer-widget` containing a `<label>`, `#timer-duration-input` (`type="number"`, `min="1"`, `step="1"`, `value="25"`), and `#timer-duration-save-btn`
+    - Add `.timer-duration-row` styles to `css/style.css` (flex row, narrow fixed-width input, Set button)
+    - _Requirements: 18.1_
+
+  - [ ] 17.2 Add `durationMinutes` state and `setDuration` to the TIMER MODULE
+    - Add `const STORAGE_KEY_TIMER_DURATION = 'todo_dashboard_timer_duration'` to the STORAGE MODULE key constants
+    - Change module state to `let durationMinutes = 25` with `let timerSeconds = durationMinutes * 60` derived from it
+    - Implement `setDuration(minutes)`: reject any value that is not a positive whole number (zero, negative, non-integer, `NaN`, non-numeric) by returning `false` and leaving `durationMinutes` unchanged; on success set `durationMinutes`, derive `timerSeconds = durationMinutes * 60`, `storageSave(STORAGE_KEY_TIMER_DURATION, ...)`, re-render, return `true`
+    - _Requirements: 18.1, 18.2, 18.3_
+
+  - [ ] 17.3 Update `resetTimer` and `initTimer` to use the configured duration
+    - Update `resetTimer` to set `timerSeconds = durationMinutes * 60` instead of a fixed `1500`
+    - Update `initTimer` to `storageLoad(STORAGE_KEY_TIMER_DURATION, 25)` into `durationMinutes` (default 25), derive `timerSeconds`, pre-fill `#timer-duration-input`, and wire `#timer-duration-save-btn` click and `#timer-duration-input` Enter key to `setDuration`
+    - _Requirements: 18.4, 18.5, 18.6_
+
+  - [ ]* 17.4 Write property test for `setDuration` configuring the timer in `timer.test.js`
+    - **Property 21: setDuration configures the timer to the given minutes**
+    - **Validates: Requirements 18.1**
+
+  - [ ]* 17.5 Write property test for `setDuration` rejecting invalid durations in `timer.test.js`
+    - **Property 22: setDuration rejects non-positive or non-whole-number durations**
+    - **Validates: Requirements 18.2**
+
+  - [ ]* 17.6 Write property test for `resetTimer` restoring the configured duration in `timer.test.js`
+    - **Property 23: resetTimer restores the configured duration**
+    - **Validates: Requirements 18.4**
+
+- [ ] 18. Prevent Duplicate Tasks (Req 19)
+  - [ ] 18.1 Add the duplicate-task notification banner to the task widget in `index.html` and CSS
+    - Add `<div id="task-notification" hidden>` inside `#task-widget`
+    - Add `#task-notification` styles to `css/style.css` (`display:none` by default; shown as a highlighted banner using `--color-danger` when a duplicate is rejected)
+    - _Requirements: 19.2_
+
+  - [ ] 18.2 Add `isDuplicateTask` and update `addTask` to reject duplicates in the TASK MODULE
+    - Implement `isDuplicateTask(description)`: return `true` if `description.trim()` matches (case-insensitively) the trimmed description of any task already in `tasks`
+    - Update `addTask` so that, after the empty/whitespace check, a duplicate (per `isDuplicateTask`) returns `false`, unhides `#task-notification`, and leaves the `tasks` array and Local Storage unchanged
+    - _Requirements: 19.1, 19.2, 19.3_
+
+  - [ ]* 18.3 Write property test for `addTask` duplicate rejection in `tasks.test.js`
+    - **Property 24: addTask rejects case-insensitive duplicate descriptions**
+    - **Validates: Requirements 19.1, 19.3**
+
+- [ ] 19. Sort To-Do List (Req 20)
+  - [ ] 19.1 Add the sort control to the task widget in `index.html` and CSS
+    - Add `<div class="task-sort-row">` inside `#task-widget` containing a `<label>` and `#task-sort-select` with options `creation`, `status`, and `alphabetical`
+    - Add `.task-sort-row` styles to `css/style.css` (flex row aligning the label and select)
+    - _Requirements: 20.1_
+
+  - [ ] 19.2 Add sort state, `createdAt`, `sortTasks`, and `setSortPreference` to the TASK MODULE
+    - Add `const STORAGE_KEY_SORT = 'todo_dashboard_sort'` to the STORAGE MODULE key constants and `let sortPreference = 'creation'` module state
+    - Update `createTask` to include a `createdAt: Date.now()` field
+    - Implement `sortTasks(taskArray, preference)`: pure, non-mutating; return a new array that is a permutation of the input ordered by `'status'` (incomplete grouped before completed), `'alphabetical'` (ascending `description.toLowerCase()`), or `'creation'` (ascending `createdAt`)
+    - Implement `setSortPreference(preference)`: set `sortPreference`, `storageSave(STORAGE_KEY_SORT, ...)`, re-render
+    - _Requirements: 20.1, 20.2, 20.3, 20.4, 20.5_
+
+  - [ ] 19.3 Update `renderTasks` and `initTasks` to apply the sort preference
+    - Update `renderTasks` to render `sortTasks(tasks, sortPreference)` rather than `tasks` directly
+    - Update `initTasks` to `storageLoad(STORAGE_KEY_SORT, 'creation')` into `sortPreference`, pre-select `#task-sort-select`, and wire its `change` handler to `setSortPreference`
+    - _Requirements: 20.1, 20.5, 20.6_
+
+  - [ ]* 19.4 Write property test for `sortTasks` permutation invariant in `tasks.test.js`
+    - **Property 25: sortTasks is a permutation of its input**
+    - **Validates: Requirements 20.1**
+
+  - [ ]* 19.5 Write property test for `sortTasks` by status in `tasks.test.js`
+    - **Property 26: sortTasks by status groups tasks by completed state**
+    - **Validates: Requirements 20.2**
+
+  - [ ]* 19.6 Write property test for `sortTasks` alphabetical in `tasks.test.js`
+    - **Property 27: sortTasks alphabetical yields case-insensitive ascending order**
+    - **Validates: Requirements 20.3**
+
+  - [ ]* 19.7 Write property test for `sortTasks` by creation order in `tasks.test.js`
+    - **Property 28: sortTasks by creation order yields ascending createdAt**
+    - **Validates: Requirements 20.4**
+
+- [ ] 20. Update the `module.exports` guard and run final feature verification
+  - [ ] 20.1 Extend the `module.exports` guard for the new pure functions
+    - Add `applyTheme`, `toggleTheme`, `composeGreeting`, `setPersonalName`, `setDuration`, `isDuplicateTask`, `sortTasks`, and `setSortPreference` to the `module.exports` object at the bottom of `js/app.js`
+    - _Requirements: TC-1, TC-4_
+
+  - [ ] 20.2 Final checkpoint — end-to-end verification of the new features
+    - Verify: theme toggle switches light/dark, persists across reload, and applies before render (no flash)
+    - Verify: a saved personal name appears in the greeting and persists; empty/whitespace names are rejected
+    - Verify: configured timer duration updates the display, persists, drives Reset, and defaults to 25; invalid values are rejected
+    - Verify: adding a case-insensitive duplicate task is rejected and shows the notification
+    - Verify: each sort option reorders the list correctly and the preference persists across reload
+    - Ensure all tests pass, ask the user if questions arise.
+
 ---
 
 ## Notes
@@ -203,6 +353,9 @@ Build a fully client-side dashboard as three files: `index.html`, `css/style.css
 - `generateId()` must be defined before any module that calls it (place it at the top of `app.js` or in the Storage module section)
 - The `module.exports` guard at the bottom of `app.js` lets the same file be required by Jest without modifying any runtime behaviour in the browser
 - Delegated event listeners on `#task-list` and `#link-list` must be attached once (in `initTasks` / `initQuickLinks`) not re-attached on every `renderTasks` / `renderQuickLinks` call
+- Tasks 15–20 add the new features (Req 16–20). `initTheme()` must run first in the `DOMContentLoaded` sequence so the theme applies before widgets render; the inline `<head>` bootstrap script prevents a flash of the default theme
+- Property-based tests for the new work (Properties 18–28) are marked optional with `*` and live in per-module test files (`theme.test.js`, `greeting.test.js`, `timer.test.js`, `tasks.test.js`)
+- New tasks reuse the existing `module.exports` guard so the new pure functions (`composeGreeting`, `setPersonalName`, `setDuration`, `isDuplicateTask`, `sortTasks`, etc.) are testable under Jest/fast-check without changing browser behaviour
 
 ## Task Dependency Graph
 
@@ -226,7 +379,34 @@ Build a fully client-side dashboard as three files: `index.html`, `css/style.css
     { "id": 14, "tasks": ["12.1"] },
     { "id": 15, "tasks": ["12.2"] },
     { "id": 16, "tasks": ["12.3"] },
-    { "id": 17, "tasks": ["12.4", "13.1"] }
+    { "id": 17, "tasks": ["12.4", "13.1"] },
+    { "id": 18, "tasks": ["15.1"] },
+    { "id": 19, "tasks": ["15.2"] },
+    { "id": 20, "tasks": ["15.3"] },
+    { "id": 21, "tasks": ["15.4", "15.5"] },
+    { "id": 22, "tasks": ["16.1"] },
+    { "id": 23, "tasks": ["16.2"] },
+    { "id": 24, "tasks": ["16.3"] },
+    { "id": 25, "tasks": ["16.4"] },
+    { "id": 26, "tasks": ["16.5"] },
+    { "id": 27, "tasks": ["16.6"] },
+    { "id": 28, "tasks": ["17.1"] },
+    { "id": 29, "tasks": ["17.2"] },
+    { "id": 30, "tasks": ["17.3"] },
+    { "id": 31, "tasks": ["17.4"] },
+    { "id": 32, "tasks": ["17.5"] },
+    { "id": 33, "tasks": ["17.6"] },
+    { "id": 34, "tasks": ["18.1"] },
+    { "id": 35, "tasks": ["18.2"] },
+    { "id": 36, "tasks": ["18.3"] },
+    { "id": 37, "tasks": ["19.1"] },
+    { "id": 38, "tasks": ["19.2"] },
+    { "id": 39, "tasks": ["19.3"] },
+    { "id": 40, "tasks": ["19.4"] },
+    { "id": 41, "tasks": ["19.5"] },
+    { "id": 42, "tasks": ["19.6"] },
+    { "id": 43, "tasks": ["19.7"] },
+    { "id": 44, "tasks": ["20.1"] }
   ]
 }
 ```

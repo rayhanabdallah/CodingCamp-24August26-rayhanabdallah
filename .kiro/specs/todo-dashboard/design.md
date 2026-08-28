@@ -6,10 +6,12 @@ The To-Do List Live Dashboard is a fully client-side single-page application (SP
 
 The dashboard is divided into four functional widgets:
 
-1. **Greeting Widget** — live clock, date, and time-based greeting
-2. **Focus Timer** — 25-minute Pomodoro countdown with Start / Stop / Reset controls
-3. **To-Do List** — CRUD task management persisted to Local Storage
+1. **Greeting Widget** — live clock, date, and time-based greeting, optionally personalised with a user-provided name
+2. **Focus Timer** — Pomodoro countdown (default 25 minutes, user-configurable) with Start / Stop / Reset controls
+3. **To-Do List** — CRUD task management persisted to Local Storage, with duplicate prevention and user-selectable sorting
 4. **Quick Links** — saved URL shortcuts that open in new tabs, persisted to Local Storage
+
+In addition, the dashboard supports a **theme** (light / dark) applied at the document root and controlled by a toggle. User preferences (theme, personal name, timer duration, sort order) are all persisted to Local Storage alongside tasks and links.
 
 The design prioritises simplicity: no dependencies to download, instant load, and zero configuration for the end user.
 
@@ -34,13 +36,16 @@ Browser loads index.html
   └─ <link> loads css/style.css
   └─ <script defer> loads js/app.js
        └─ DOMContentLoaded fires
+            ├─ THEME MODULE     — reads saved theme, applies data-theme before render
             ├─ STORAGE MODULE   — reads localStorage, returns parsed data
-            ├─ GREETING MODULE  — starts clock interval, renders greeting
-            ├─ TIMER MODULE     — initialises timer display, wires buttons
-            ├─ TASK MODULE      — renders saved tasks, wires add/edit/delete
+            ├─ GREETING MODULE  — starts clock interval, renders greeting (with saved name)
+            ├─ TIMER MODULE     — initialises timer display from saved duration, wires buttons
+            ├─ TASK MODULE      — renders saved tasks (sorted), wires add/edit/delete/sort
             ├─ QUICKLINKS MODULE — renders saved links, wires add/delete
             └─ INIT             — calls all module init functions
 ```
+
+> **Theme-before-render ordering:** `initTheme()` runs first in the INIT sequence so the `data-theme` attribute is set on the document root before any widget content is rendered, satisfying Requirement 16.3 (theme applied before rendering dashboard content). To avoid a flash of the default theme, a tiny inline script in `<head>` may also apply the saved theme synchronously before CSS paints (see HTML Layout Structure).
 
 Because there is only one JS file, modules are not ES modules — they are plain JavaScript objects / IIFE-style namespaced sections, separated by clearly named comment banners. There is no `import`/`export`.
 
@@ -65,11 +70,18 @@ User interaction
 **Sub-elements:**
 | Element | ID | Role |
 |---|---|---|
-| `<h1>` | `#greeting-text` | Displays "Good Morning / Afternoon / Evening / Night" |
+| `<h1>` | `#greeting-text` | Displays "Good Morning / Afternoon / Evening / Night", optionally with the personal name appended |
 | `<p>` | `#clock-display` | Live HH:MM:SS clock |
 | `<p>` | `#date-display` | Full date string |
+| `<input>` | `#name-input` | Personal name entry |
+| `<button>` | `#name-save-btn` | Confirms and saves the personal name |
 
 **Module:** `// === GREETING MODULE ===`
+
+**Internal state:**
+```js
+let personalName = '';   // Saved personal name loaded from / synced to localStorage
+```
 
 **Key functions:**
 
@@ -80,6 +92,26 @@ User interaction
  * @returns {string} One of "Good Morning", "Good Afternoon", "Good Evening", "Good Night"
  */
 function getGreeting(hour) {}
+
+/**
+ * Composes the full greeting string for a given hour and personal name.
+ * If name is non-empty after trimming, returns "{getGreeting(hour)}, {name.trim()}".
+ * Otherwise returns getGreeting(hour) unchanged (no comma, no name).
+ * @param {number} hour - The current hour in 24-hour format.
+ * @param {string} name - The personal name (may be empty/whitespace).
+ * @returns {string}
+ */
+function composeGreeting(hour, name) {}
+
+/**
+ * Validates and stores the personal name. Rejects empty/whitespace-only values,
+ * returning false and leaving the previously saved name unchanged. On success,
+ * trims and stores the name, persists to localStorage, re-renders the greeting,
+ * and returns true.
+ * @param {string} name
+ * @returns {boolean}
+ */
+function setPersonalName(name) {}
 
 /**
  * Formats a Date object as "HH:MM:SS" (24-hour, zero-padded).
@@ -96,14 +128,16 @@ function formatTime(date) {}
 function formatDate(date) {}
 
 /**
- * Updates #greeting-text, #clock-display, and #date-display with current values.
+ * Updates #greeting-text (via composeGreeting using the current hour and
+ * personalName), #clock-display, and #date-display with current values.
  * Called every second via setInterval.
  */
 function tickClock() {}
 
 /**
- * Initialises the greeting widget: calls tickClock() immediately, then sets a
- * 1000 ms interval.
+ * Initialises the greeting widget: loads personalName from localStorage,
+ * pre-fills #name-input, wires the name save button/Enter key, calls
+ * tickClock() immediately, then sets a 1000 ms interval.
  */
 function initGreeting() {}
 ```
@@ -120,16 +154,21 @@ function initGreeting() {}
 | `<p>` | `#timer-display` | MM:SS countdown display |
 | `<button>` | `#timer-start` | Starts the countdown |
 | `<button>` | `#timer-stop` | Pauses the countdown |
-| `<button>` | `#timer-reset` | Resets to 25:00 |
+| `<button>` | `#timer-reset` | Resets to the configured duration |
 | `<div>` | `#timer-notification` | Hidden banner shown on completion |
+| `<input>` | `#timer-duration-input` | Configurable duration in whole minutes |
+| `<button>` | `#timer-duration-save-btn` | Confirms and saves the duration |
 
 **Module:** `// === TIMER MODULE ===`
 
 **Internal state (module-level variables):**
 ```js
-let timerSeconds = 25 * 60;   // remaining seconds
-let timerInterval = null;      // setInterval handle, null when stopped
+let durationMinutes = 25;             // configured session length in whole minutes
+let timerSeconds = durationMinutes * 60; // remaining seconds, derived from durationMinutes
+let timerInterval = null;             // setInterval handle, null when stopped
 ```
+
+`durationMinutes` is the single source of truth for the session length; `timerSeconds` is derived from it on reset and on load. The default is 25 minutes when Local Storage has no saved duration.
 
 **Key functions:**
 
@@ -157,9 +196,22 @@ function startTimer() {}
 function stopTimer() {}
 
 /**
- * Clears the interval, resets timerSeconds to 1500, re-renders, updates buttons.
+ * Clears the interval, resets timerSeconds to durationMinutes * 60 (the
+ * configured duration, not a fixed 1500), re-renders, updates buttons.
  */
 function resetTimer() {}
+
+/**
+ * Validates and stores a new Focus Timer duration in whole minutes.
+ * Rejects any value that is not a positive whole number (zero, negative,
+ * non-integer, NaN, or non-numeric input): returns false and leaves
+ * durationMinutes unchanged. On success, sets durationMinutes, derives
+ * timerSeconds = durationMinutes * 60, persists to localStorage, re-renders,
+ * and returns true.
+ * @param {number|string} minutes
+ * @returns {boolean}
+ */
+function setDuration(minutes) {}
 
 /**
  * Called each tick. Decrements timerSeconds; if it reaches 0, calls onTimerComplete().
@@ -173,7 +225,9 @@ function timerTick() {}
 function onTimerComplete() {}
 
 /**
- * Wires Start/Stop/Reset button click handlers. Calls renderTimer().
+ * Loads durationMinutes from localStorage (default 25 when absent), derives
+ * timerSeconds, pre-fills #timer-duration-input, wires Start/Stop/Reset and the
+ * duration save button/Enter key handlers. Calls renderTimer().
  */
 function initTimer() {}
 ```
@@ -189,8 +243,10 @@ function initTimer() {}
 |---|---|---|
 | `<input>` | `#task-input` | New task description entry |
 | `<button>` | `#task-add-btn` | Triggers task addition |
+| `<select>` | `#task-sort-select` | Sort control (status / alphabetical / creation order) |
 | `<ul>` | `#task-list` | Container for rendered task items |
 | `<p>` | `#task-empty-msg` | Shown when task list is empty |
+| `<div>` | `#task-notification` | Hidden banner shown when a duplicate is rejected |
 
 Each task is rendered as an `<li>` with the following internal structure:
 
@@ -209,26 +265,66 @@ When editing, `<span class="task-text">` is replaced with `<input class="task-ed
 
 **Internal state:**
 ```js
-let tasks = [];   // Array of Task objects loaded from / synced to localStorage
+let tasks = [];               // Array of Task objects loaded from / synced to localStorage
+let sortPreference = 'creation'; // 'status' | 'alphabetical' | 'creation' — loaded from / synced to localStorage
 ```
+
+**Sort preference values:**
+| Value | Meaning |
+|---|---|
+| `'status'` | Group by completed state (Requirement 20.2) |
+| `'alphabetical'` | Ascending, case-insensitive by description (Requirement 20.3) |
+| `'creation'` | Oldest → newest by creation identifier (Requirement 20.4) — default |
 
 **Key functions:**
 
 ```js
 /**
- * Creates a new Task object with a generated ID.
+ * Creates a new Task object with a generated ID and a createdAt timestamp
+ * used for creation-order sorting.
  * @param {string} description - Non-empty, trimmed task text.
  * @returns {Task}
  */
 function createTask(description) {}
 
 /**
+ * Returns true if description (trimmed, compared case-insensitively) matches
+ * the trimmed description of any task already in the tasks array.
+ * @param {string} description
+ * @returns {boolean}
+ */
+function isDuplicateTask(description) {}
+
+/**
  * Adds a task to the tasks array, persists, and re-renders.
- * Returns false and does nothing if description is empty/whitespace.
+ * Returns false and does nothing if:
+ *   - description is empty/whitespace after trim(); or
+ *   - description is a duplicate of an existing task (trimmed, case-insensitive)
+ *     — in the duplicate case, shows #task-notification and leaves the tasks
+ *     array and Local Storage unchanged.
  * @param {string} description
  * @returns {boolean}
  */
 function addTask(description) {}
+
+/**
+ * Returns a new array containing all tasks reordered according to the given
+ * preference. Pure and non-mutating: the result is always a permutation of the
+ * input (same tasks, same count). Comparators:
+ *   - 'status':       incomplete tasks grouped before completed tasks
+ *   - 'alphabetical': ascending by description.toLowerCase()
+ *   - 'creation':     ascending by createdAt (oldest first)
+ * @param {Task[]} taskArray
+ * @param {'status'|'alphabetical'|'creation'} preference
+ * @returns {Task[]}
+ */
+function sortTasks(taskArray, preference) {}
+
+/**
+ * Sets the active sort preference, persists it to localStorage, and re-renders.
+ * @param {'status'|'alphabetical'|'creation'} preference
+ */
+function setSortPreference(preference) {}
 
 /**
  * Toggles the completed state of the task with the given id.
@@ -252,7 +348,8 @@ function editTask(id, newDescription) {}
 function deleteTask(id) {}
 
 /**
- * Renders the full task list into #task-list.
+ * Renders the full task list into #task-list, ordered by the current
+ * sortPreference via sortTasks(tasks, sortPreference).
  * Shows #task-empty-msg when tasks array is empty.
  */
 function renderTasks() {}
@@ -271,7 +368,9 @@ function enterEditMode(id) {}
 function exitEditMode(id, save) {}
 
 /**
- * Loads tasks from localStorage, wires the Add button and Enter-key listener.
+ * Loads tasks and sortPreference from localStorage, pre-selects
+ * #task-sort-select, wires the Add button, Enter-key listener, and the sort
+ * select change handler, then renders the (sorted) list.
  */
 function initTasks() {}
 ```
@@ -355,7 +454,45 @@ function initQuickLinks() {}
 
 ---
 
-### 5. Storage Module
+### 5. Theme Module
+
+**HTML anchor:** the `data-theme` attribute lives on `<html>` (the document root element). A toggle button lives in the page header/top bar.
+
+**Sub-elements:**
+| Element | ID | Role |
+|---|---|---|
+| `<button>` | `#theme-toggle` | Toggles between light and dark theme |
+
+**Module:** `// === THEME MODULE ===`
+
+The theme is represented by the `data-theme` attribute on `document.documentElement` (`<html>`). CSS custom properties are defined for the default (light) theme under `:root` and overridden under the `[data-theme="dark"]` selector. Only two values are valid: `'light'` and `'dark'`.
+
+**Key functions:**
+
+```js
+/**
+ * Applies a theme by setting the data-theme attribute on <html>.
+ * @param {'light'|'dark'} theme
+ */
+function applyTheme(theme) {}
+
+/**
+ * Reads the current theme from the data-theme attribute, switches to the other
+ * theme, applies it, and persists the new value to localStorage.
+ */
+function toggleTheme() {}
+
+/**
+ * Loads the saved theme from localStorage (default 'light' when absent),
+ * applies it to <html>, and wires the #theme-toggle click handler.
+ * Called first in the INIT sequence so the theme is applied before widgets render.
+ */
+function initTheme() {}
+```
+
+---
+
+### 6. Storage Module
 
 **Module:** `// === STORAGE MODULE ===`
 
@@ -364,6 +501,10 @@ Thin wrapper over `localStorage`. All keys are constants defined at the top.
 ```js
 const STORAGE_KEY_TASKS = 'todo_dashboard_tasks';
 const STORAGE_KEY_LINKS = 'todo_dashboard_links';
+const STORAGE_KEY_THEME = 'todo_dashboard_theme';         // 'light' | 'dark'
+const STORAGE_KEY_NAME = 'todo_dashboard_name';           // personal name string
+const STORAGE_KEY_TIMER_DURATION = 'todo_dashboard_timer_duration'; // whole minutes (number)
+const STORAGE_KEY_SORT = 'todo_dashboard_sort';           // 'status' | 'alphabetical' | 'creation'
 
 /**
  * Serialises value as JSON and saves it to localStorage under key.
@@ -392,11 +533,14 @@ Stored in `localStorage` under key `todo_dashboard_tasks` as a JSON array of Tas
 ```jsonc
 // Task
 {
-  "id": "string",          // Unique identifier — Date.now() + Math.random() string
-  "description": "string", // Non-empty user-provided text
-  "completed": false        // boolean — true when task is marked done
+  "id": "string",          // Unique identifier — Date.now() + '_' + Math.random() string
+  "description": "string", // Non-empty user-provided text (trimmed)
+  "completed": false,       // boolean — true when task is marked done
+  "createdAt": 0            // number — creation timestamp (ms) used for creation-order sorting
 }
 ```
+
+**Creation order:** The existing `id` is generated as `Date.now() + '_' + Math.random()...`, so its numeric time prefix is already monotonic with respect to creation time and could be parsed for ordering. To make creation-order sorting explicit and robust (independent of ID format), each Task also carries a dedicated `createdAt` field set to `Date.now()` at creation. Tasks loaded from storage that predate this field fall back to the numeric prefix of `id` (or `0`) so legacy data still sorts sensibly.
 
 **Example:**
 ```json
@@ -404,12 +548,14 @@ Stored in `localStorage` under key `todo_dashboard_tasks` as a JSON array of Tas
   {
     "id": "1724657234512_0.4821",
     "description": "Review pull request #42",
-    "completed": false
+    "completed": false,
+    "createdAt": 1724657234512
   },
   {
     "id": "1724657250000_0.1234",
     "description": "Write unit tests",
-    "completed": true
+    "completed": true,
+    "createdAt": 1724657250000
   }
 ]
 ```
@@ -443,6 +589,25 @@ Stored in `localStorage` under key `todo_dashboard_links` as a JSON array of Qui
 ]
 ```
 
+### User Preferences
+
+User preferences are stored as individual scalar values under their own keys (not grouped into one object), keeping each independent and simple to read/write.
+
+| Key | Type | Values | Default |
+|---|---|---|---|
+| `todo_dashboard_theme` | string | `"light"` \| `"dark"` | `"light"` |
+| `todo_dashboard_name` | string | any trimmed non-empty name | `""` (no name shown) |
+| `todo_dashboard_timer_duration` | number | positive whole minutes | `25` |
+| `todo_dashboard_sort` | string | `"status"` \| `"alphabetical"` \| `"creation"` | `"creation"` |
+
+**Examples of stored values:**
+```
+localStorage["todo_dashboard_theme"]          = "dark"
+localStorage["todo_dashboard_name"]           = "Rayhan"
+localStorage["todo_dashboard_timer_duration"] = "50"
+localStorage["todo_dashboard_sort"]           = "alphabetical"
+```
+
 ---
 
 ## HTML Layout Structure
@@ -455,8 +620,24 @@ Stored in `localStorage` under key `todo_dashboard_links` as a JSON array of Qui
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard</title>
   <link rel="stylesheet" href="css/style.css" />
+  <!--
+    Optional inline theme bootstrap: applies the saved theme synchronously
+    before CSS paints, preventing a flash of the default (light) theme.
+    initTheme() in app.js remains the authoritative applier.
+  -->
+  <script>
+    try {
+      var t = localStorage.getItem('todo_dashboard_theme');
+      document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'light'); }
+  </script>
 </head>
 <body>
+  <!-- Top bar: theme toggle -->
+  <header class="top-bar">
+    <button id="theme-toggle" aria-label="Toggle light and dark theme">Toggle Theme</button>
+  </header>
+
   <div class="dashboard-grid">
 
     <!-- Widget 1: Greeting -->
@@ -464,6 +645,10 @@ Stored in `localStorage` under key `todo_dashboard_links` as a JSON array of Qui
       <h1 id="greeting-text"></h1>
       <p id="clock-display"></p>
       <p id="date-display"></p>
+      <div class="name-input-row">
+        <input id="name-input" type="text" placeholder="Your name" />
+        <button id="name-save-btn">Save</button>
+      </div>
     </section>
 
     <!-- Widget 2: Focus Timer -->
@@ -475,6 +660,11 @@ Stored in `localStorage` under key `todo_dashboard_links` as a JSON array of Qui
         <button id="timer-stop" disabled>Stop</button>
         <button id="timer-reset">Reset</button>
       </div>
+      <div class="timer-duration-row">
+        <label for="timer-duration-input">Minutes</label>
+        <input id="timer-duration-input" type="number" min="1" step="1" value="25" />
+        <button id="timer-duration-save-btn">Set</button>
+      </div>
       <div id="timer-notification" hidden>Session complete! Take a break.</div>
     </section>
 
@@ -485,8 +675,17 @@ Stored in `localStorage` under key `todo_dashboard_links` as a JSON array of Qui
         <input id="task-input" type="text" placeholder="Add a task..." />
         <button id="task-add-btn">Add</button>
       </div>
+      <div class="task-sort-row">
+        <label for="task-sort-select">Sort by</label>
+        <select id="task-sort-select">
+          <option value="creation">Creation order</option>
+          <option value="status">Completion status</option>
+          <option value="alphabetical">Alphabetical</option>
+        </select>
+      </div>
       <ul id="task-list"></ul>
       <p id="task-empty-msg">No tasks yet. Add one above!</p>
+      <div id="task-notification" hidden>That task already exists.</div>
     </section>
 
     <!-- Widget 4: Quick Links -->
@@ -546,6 +745,45 @@ Stored in `localStorage` under key `todo_dashboard_links` as a JSON array of Qui
 }
 ```
 
+### Theming (Light / Dark Mode)
+
+The colour tokens above are the **light theme defaults** and are also applied when `data-theme="light"`. The dark theme overrides the same custom-property names under the `[data-theme="dark"]` attribute selector on `<html>`. Because every widget style references the tokens (never hard-coded colours), switching `data-theme` re-themes the entire dashboard with no other changes.
+
+```css
+/* Dark theme overrides — only the colour tokens change */
+[data-theme="dark"] {
+  --color-bg:         #1c1c1e;
+  --color-surface:    #2c2c2e;
+  --color-border:     #3a3a3c;
+  --color-text:       #f2f2f2;
+  --color-text-muted: #9a9a9a;
+  --color-primary:    #6b93ff;
+  --color-danger:     #ff6b6b;
+  --color-done:       #6a6a6a;
+}
+```
+
+The document root sets the page background and text from the tokens so the theme covers the whole viewport:
+
+```css
+html { background: var(--color-bg); }
+body { color: var(--color-text); background: var(--color-bg); }
+```
+
+### Top Bar
+
+```css
+.top-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-md) var(--space-xl);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+```
+
+`#theme-toggle` is styled as a compact secondary button and may swap its label/icon based on the active `data-theme`.
+
 ### Layout
 
 The dashboard uses CSS Grid for the top-level layout. On wide viewports the four widgets are arranged in a 2×2 grid. On narrow viewports (≤768 px) it collapses to a single column.
@@ -585,6 +823,7 @@ The dashboard uses CSS Grid for the top-level layout. On wide viewports the four
 - `#greeting-text`: Large, light-weight heading, no margin-bottom
 - `#clock-display`: Monospace font, `var(--font-size-clock)`, centred
 - `#date-display`: Muted colour, smaller size
+- `.name-input-row`: flex row with `#name-input` growing via `flex:1` and the save button fixed width
 
 ### Focus Timer Widget
 
@@ -592,6 +831,7 @@ The dashboard uses CSS Grid for the top-level layout. On wide viewports the four
 - `.timer-controls`: flex row, `gap: var(--space-sm)`, centred
 - Buttons: styled uniformly; the active-state button gets `--color-primary` background
 - `#timer-notification`: `display:none` by default; shown as a highlighted banner with `--color-primary` border when timer completes
+- `.timer-duration-row`: flex row aligning the label, `#timer-duration-input` (fixed narrow width), and the Set button
 
 ### To-Do List Widget
 
@@ -600,6 +840,8 @@ The dashboard uses CSS Grid for the top-level layout. On wide viewports the four
 - Each `<li>`: flex row, `align-items:center`, border-bottom separator
 - `.task-text.completed`: `text-decoration: line-through; color: var(--color-done)`
 - Edit/Delete buttons: small icon-style buttons, right-aligned via `margin-left:auto`
+- `.task-sort-row`: flex row aligning the label and `#task-sort-select`
+- `#task-notification`: `display:none` by default; shown as a highlighted banner (using `--color-danger`) when a duplicate task is rejected
 
 ### Quick Links Widget
 
@@ -622,11 +864,20 @@ The single JS file is organised into clearly named sections using comment banner
 //   storageLoad(key, defaultValue)
 
 // ================================================================
+// === THEME MODULE ===
+// ================================================================
+//   applyTheme(theme)
+//   toggleTheme()
+//   initTheme()
+
+// ================================================================
 // === GREETING MODULE ===
 // ================================================================
-//   getGreeting(hour)     → string
-//   formatTime(date)      → "HH:MM:SS"
-//   formatDate(date)      → "DayName, DD Month YYYY"
+//   getGreeting(hour)             → string
+//   composeGreeting(hour, name)   → string
+//   setPersonalName(name)         → boolean
+//   formatTime(date)              → "HH:MM:SS"
+//   formatDate(date)              → "DayName, DD Month YYYY"
 //   tickClock()
 //   initGreeting()
 
@@ -638,6 +889,7 @@ The single JS file is organised into clearly named sections using comment banner
 //   startTimer()
 //   stopTimer()
 //   resetTimer()
+//   setDuration(minutes)  → boolean
 //   timerTick()
 //   onTimerComplete()
 //   initTimer()
@@ -645,11 +897,14 @@ The single JS file is organised into clearly named sections using comment banner
 // ================================================================
 // === TASK MODULE ===
 // ================================================================
-//   createTask(description) → Task
-//   addTask(description)    → boolean
+//   createTask(description)          → Task
+//   isDuplicateTask(description)     → boolean
+//   addTask(description)             → boolean
 //   toggleTask(id)
-//   editTask(id, desc)      → boolean
+//   editTask(id, desc)               → boolean
 //   deleteTask(id)
+//   sortTasks(taskArray, preference) → Task[]
+//   setSortPreference(preference)
 //   renderTasks()
 //   enterEditMode(id)
 //   exitEditMode(id, save)
@@ -669,6 +924,7 @@ The single JS file is organised into clearly named sections using comment banner
 // === INIT ===
 // ================================================================
 //   document.addEventListener('DOMContentLoaded', () => {
+//     initTheme();      // first — apply theme before widgets render
 //     initGreeting();
 //     initTimer();
 //     initTasks();
@@ -697,6 +953,10 @@ function generateId() {
 | Task checkbox, edit, delete | TASK MODULE `renderTasks()` | Event delegation on `#task-list` via `closest()` |
 | Add link (button click) | QUICKLINKS MODULE `initQuickLinks()` | `addEventListener('click')` on `#link-add-btn` |
 | Delete link | QUICKLINKS MODULE `renderQuickLinks()` | Event delegation on `#link-list` |
+| Theme toggle click | THEME MODULE `initTheme()` | `addEventListener('click')` on `#theme-toggle` |
+| Save name (button click / Enter) | GREETING MODULE `initGreeting()` | `addEventListener` on `#name-save-btn` and `#name-input` |
+| Set timer duration (button click / Enter) | TIMER MODULE `initTimer()` | `addEventListener` on `#timer-duration-save-btn` and `#timer-duration-input` |
+| Change sort option | TASK MODULE `initTasks()` | `addEventListener('change')` on `#task-sort-select` |
 
 Event delegation is used for the task list and quick links list to avoid re-attaching listeners on every render.
 
@@ -849,6 +1109,94 @@ No other string is ever returned.
 
 ---
 
+### Property 18: composeGreeting appends a valid personal name
+
+*For any* integer hour in the range 0–23 and any non-empty, non-whitespace-only string `name`, `composeGreeting(hour, name)` SHALL return exactly `getGreeting(hour) + ", " + name.trim()`.
+
+**Validates: Requirements 17.1**
+
+---
+
+### Property 19: composeGreeting omits an empty personal name
+
+*For any* integer hour in the range 0–23 and any empty or whitespace-only string `name`, `composeGreeting(hour, name)` SHALL return exactly `getGreeting(hour)` with no comma and no name appended.
+
+**Validates: Requirements 17.4**
+
+---
+
+### Property 20: setPersonalName rejects empty or whitespace-only names
+
+*For any* previously saved personal name and any empty or whitespace-only string `name`, calling `setPersonalName(name)` SHALL return `false` and leave the stored `personalName` unchanged.
+
+**Validates: Requirements 17.5**
+
+---
+
+### Property 21: setDuration configures the timer to the given minutes
+
+*For any* positive whole number `minutes`, calling `setDuration(minutes)` SHALL return `true`, set `durationMinutes` to `minutes`, and result in `timerSeconds` equal to `minutes * 60`.
+
+**Validates: Requirements 18.1**
+
+---
+
+### Property 22: setDuration rejects non-positive or non-whole-number durations
+
+*For any* value that is not a positive whole number of minutes (zero, negative numbers, non-integer numbers, `NaN`, or non-numeric strings), calling `setDuration(value)` SHALL return `false` and leave `durationMinutes` unchanged.
+
+**Validates: Requirements 18.2**
+
+---
+
+### Property 23: resetTimer restores the configured duration
+
+*For any* configured `durationMinutes` and any current `timerSeconds` value, calling `resetTimer()` SHALL set `timerSeconds` to `durationMinutes * 60`.
+
+**Validates: Requirements 18.4**
+
+---
+
+### Property 24: addTask rejects case-insensitive duplicate descriptions
+
+*For any* task list containing a task with description `d`, and any string `input` whose trimmed value equals `d.trim()` when compared case-insensitively, calling `addTask(input)` SHALL return `false`, leave the `tasks` array unchanged, and leave the value stored in `localStorage` under `todo_dashboard_tasks` unchanged.
+
+**Validates: Requirements 19.1, 19.3**
+
+---
+
+### Property 25: sortTasks is a permutation of its input
+
+*For any* array of tasks and any valid sort preference, `sortTasks(taskArray, preference)` SHALL return an array of the same length whose multiset of task `id` values is identical to that of the input — no task is added, removed, or duplicated.
+
+**Validates: Requirements 20.1**
+
+---
+
+### Property 26: sortTasks by status groups tasks by completed state
+
+*For any* array of tasks, `sortTasks(taskArray, 'status')` SHALL produce an ordering in which all tasks sharing one `completed` value appear contiguously before all tasks with the other `completed` value — i.e., there is no completed task positioned between two incomplete tasks (or vice versa).
+
+**Validates: Requirements 20.2**
+
+---
+
+### Property 27: sortTasks alphabetical yields case-insensitive ascending order
+
+*For any* array of tasks, in the array returned by `sortTasks(taskArray, 'alphabetical')`, every adjacent pair `(a, b)` SHALL satisfy `a.description.toLowerCase() <= b.description.toLowerCase()`.
+
+**Validates: Requirements 20.3**
+
+---
+
+### Property 28: sortTasks by creation order yields ascending createdAt
+
+*For any* array of tasks, in the array returned by `sortTasks(taskArray, 'creation')`, every adjacent pair `(a, b)` SHALL satisfy `a.createdAt <= b.createdAt` (oldest first).
+
+**Validates: Requirements 20.4**
+
+---
+
 ## Error Handling
 
 ### Input Validation
@@ -857,10 +1205,12 @@ All user-facing inputs are validated before any state mutation or persistence oc
 
 | Input | Validation Rule | On Failure |
 |---|---|---|
-| New task description | Must be non-empty after `trim()` | Return `false`; keep focus on `#task-input` |
+| New task description | Must be non-empty after `trim()` **and** not a case-insensitive duplicate of an existing task | Return `false`; keep focus on `#task-input`; on duplicate, show `#task-notification` |
 | Edit task description | Must be non-empty after `trim()` | Return `false`; restore original display text |
 | Quick link label | Must be non-empty after `trim()` | Return `false`; apply error class to `#link-label-input` |
 | Quick link URL | Must be non-empty after `trim()` | Return `false`; apply error class to `#link-url-input` |
+| Personal name | Must be non-empty after `trim()` | Return `false`; retain previously saved name |
+| Timer duration | Must be a positive whole number of minutes | Return `false`; retain previously configured duration |
 
 ### localStorage Errors
 
@@ -915,6 +1265,23 @@ const loaded = storageLoad(STORAGE_KEY_TASKS, []);
 tasks = Array.isArray(loaded) ? loaded : [];
 ```
 
+### Preference Load Fallbacks
+
+Each user-preference value is validated on load and falls back to its default if missing or invalid, so corrupted or manually-edited storage never breaks initialisation:
+
+- **Theme:** `initTheme` accepts only `'light'` or `'dark'`; any other value (including `null`) falls back to `'light'`.
+- **Personal name:** loaded as a string; a missing value yields `''`, and the greeting is shown without a name.
+- **Timer duration:** parsed as a number; if it is not a positive whole number, it falls back to `25`.
+- **Sort preference:** accepts only `'status'`, `'alphabetical'`, or `'creation'`; any other value falls back to `'creation'`.
+
+```js
+const savedSort = storageLoad(STORAGE_KEY_SORT, 'creation');
+sortPreference = ['status', 'alphabetical', 'creation'].includes(savedSort) ? savedSort : 'creation';
+
+const savedDuration = Number(storageLoad(STORAGE_KEY_TIMER_DURATION, 25));
+durationMinutes = Number.isInteger(savedDuration) && savedDuration > 0 ? savedDuration : 25;
+```
+
 ### Timer Edge Cases
 
 - Calling `startTimer()` while the timer is already running is a no-op (the Start button is disabled when the timer is active).
@@ -941,21 +1308,23 @@ js/
 tests/
   greeting.test.js      ← unit + property tests for GREETING MODULE pure functions
   timer.test.js         ← unit + property tests for TIMER MODULE pure functions
-  tasks.test.js         ← unit + property tests for TASK MODULE logic
+  tasks.test.js         ← unit + property tests for TASK MODULE logic (incl. duplicates + sorting)
   quicklinks.test.js    ← unit + property tests for QUICKLINKS MODULE logic
   storage.test.js       ← unit tests for STORAGE MODULE (mocked localStorage)
+  theme.test.js         ← unit tests for THEME MODULE (data-theme + persistence)
 ```
 
-> **Note:** `js/app.js` is a single-file module. For testing, the pure functions (`formatTime`, `formatDate`, `getGreeting`, `formatTimer`, `normaliseUrl`, `createTask`, `addTask`, `toggleTask`, `editTask`, `deleteTask`, `addQuickLink`, `deleteQuickLink`) are extracted and exported via a `module.exports` guard at the bottom of `app.js`:
+> **Note:** `js/app.js` is a single-file module. For testing, the pure functions (`formatTime`, `formatDate`, `getGreeting`, `composeGreeting`, `setPersonalName`, `formatTimer`, `setDuration`, `resetTimer`, `normaliseUrl`, `createTask`, `isDuplicateTask`, `addTask`, `toggleTask`, `editTask`, `deleteTask`, `sortTasks`, `addQuickLink`, `deleteQuickLink`, `applyTheme`, `toggleTheme`) are extracted and exported via a `module.exports` guard at the bottom of `app.js`:
 >
 > ```js
 > // At the end of app.js — only active in Node/test environments
 > if (typeof module !== 'undefined') {
 >   module.exports = {
->     formatTime, formatDate, getGreeting,
->     formatTimer,
->     createTask, addTask, toggleTask, editTask, deleteTask,
+>     formatTime, formatDate, getGreeting, composeGreeting, setPersonalName,
+>     formatTimer, setDuration, resetTimer,
+>     createTask, isDuplicateTask, addTask, toggleTask, editTask, deleteTask, sortTasks,
 >     normaliseUrl, createQuickLink, addQuickLink, deleteQuickLink,
+>     applyTheme, toggleTheme,
 >     storageSave, storageLoad,
 >   };
 > }
@@ -968,11 +1337,17 @@ Unit tests cover specific examples, edge cases, and DOM interaction points that 
 **greeting.test.js**
 - `formatTime` produces `"00:00:00"` for midnight
 - `formatDate` for a known date (e.g., 2024-08-26) produces the expected string
+- `composeGreeting(9, 'Rayhan')` → `"Good Morning, Rayhan"` (example)
+- Setting a name persists it to `todo_dashboard_name` and the greeting shows it (DOM test)
+- Loading with no saved name shows the greeting without a name (edge case, Req 17.4/17.3)
 
 **timer.test.js**
 - `formatTimer(0)` → `"00:00"`
 - `formatTimer(1500)` → `"25:00"`
 - `formatTimer(90)` → `"01:30"`
+- Setting a valid duration persists it to `todo_dashboard_timer_duration` (example, Req 18.3)
+- Loading with no saved duration initialises `timerSeconds` to `1500` (edge case, Req 18.6)
+- Loading with a saved duration of 50 initialises `timerSeconds` to `3000` (example, Req 18.5)
 
 **tasks.test.js**
 - Adding a task clears the input field value (DOM test with jsdom)
@@ -980,6 +1355,9 @@ Unit tests cover specific examples, edge cases, and DOM interaction points that 
 - Deleting the last task shows `#task-empty-msg`
 - Loading from empty localStorage renders the empty-state message
 - Edit mode: clicking Edit replaces `<span>` with `<input>` pre-filled with the description
+- Adding a duplicate task shows `#task-notification` and does not add a row (DOM test, Req 19.2)
+- Changing the sort select persists the preference to `todo_dashboard_sort` (example, Req 20.5)
+- Loading with a saved sort preference renders the list in that order (example, Req 20.6)
 
 **quicklinks.test.js**
 - Clicking a quick link anchor has `target="_blank"` and `rel="noopener noreferrer"` (DOM test)
@@ -990,6 +1368,12 @@ Unit tests cover specific examples, edge cases, and DOM interaction points that 
 - `storageSave` / `storageLoad` round-trip with a mock localStorage
 - `storageLoad` returns `defaultValue` when key is absent
 - `storageLoad` returns `defaultValue` when JSON is corrupted
+
+**theme.test.js**
+- `applyTheme('dark')` sets `data-theme="dark"` on `<html>` (DOM test, Req 16.1)
+- `toggleTheme` flips light→dark→light and persists to `todo_dashboard_theme` (DOM test, Req 16.1/16.2)
+- Loading with no saved theme applies `light` as default (edge case, Req 16.4)
+- Loading with a saved `dark` theme applies it on init (example, Req 16.3)
 
 ### Property-Based Tests
 
@@ -1196,6 +1580,163 @@ fc.assert(fc.property(
     const before = quickLinks.length;
     deleteQuickLink(targetId);
     return quickLinks.length === before - 1 && quickLinks.every(l => l.id !== targetId);
+  }
+), { numRuns: 100 });
+
+// Feature: todo-dashboard, Property 18: composeGreeting appends a valid personal name
+fc.assert(fc.property(
+  fc.integer({ min: 0, max: 23 }),
+  fc.string({ minLength: 1 }).filter(s => s.trim().length > 0),
+  (hour, name) => {
+    return composeGreeting(hour, name) === getGreeting(hour) + ', ' + name.trim();
+  }
+), { numRuns: 100 });
+
+// Feature: todo-dashboard, Property 19: composeGreeting omits an empty personal name
+fc.assert(fc.property(
+  fc.integer({ min: 0, max: 23 }),
+  fc.oneof(fc.constant(''), fc.stringOf(fc.constantFrom(' ', '\t', '\n', '\r'))),
+  (hour, name) => {
+    return composeGreeting(hour, name) === getGreeting(hour);
+  }
+), { numRuns: 100 });
+
+// Feature: todo-dashboard, Property 20: setPersonalName rejects empty or whitespace-only names
+fc.assert(fc.property(
+  fc.string({ minLength: 1 }).filter(s => s.trim().length > 0),
+  fc.oneof(fc.constant(''), fc.stringOf(fc.constantFrom(' ', '\t', '\n', '\r'))),
+  (savedName, badName) => {
+    personalName = savedName;
+    const result = setPersonalName(badName);
+    return result === false && personalName === savedName;
+  }
+), { numRuns: 100 });
+
+// Feature: todo-dashboard, Property 21: setDuration configures the timer to the given minutes
+fc.assert(fc.property(
+  fc.integer({ min: 1, max: 600 }),
+  (minutes) => {
+    const result = setDuration(minutes);
+    return result === true && durationMinutes === minutes && timerSeconds === minutes * 60;
+  }
+), { numRuns: 100 });
+
+// Feature: todo-dashboard, Property 22: setDuration rejects non-positive or non-whole-number durations
+fc.assert(fc.property(
+  fc.oneof(
+    fc.integer({ max: 0 }),                         // zero and negatives
+    fc.double({ min: 0.01, max: 100, noInteger: true }), // non-integers
+    fc.constant(NaN),
+    fc.string().filter(s => isNaN(Number(s)) || s.trim() === '') // non-numeric strings
+  ),
+  (badValue) => {
+    durationMinutes = 25;
+    timerSeconds = 25 * 60;
+    const result = setDuration(badValue);
+    return result === false && durationMinutes === 25;
+  }
+), { numRuns: 100 });
+
+// Feature: todo-dashboard, Property 23: resetTimer restores the configured duration
+fc.assert(fc.property(
+  fc.integer({ min: 1, max: 600 }),
+  fc.integer({ min: 0, max: 36000 }),
+  (minutes, elapsedSeconds) => {
+    durationMinutes = minutes;
+    timerSeconds = elapsedSeconds;
+    resetTimer();
+    return timerSeconds === minutes * 60;
+  }
+), { numRuns: 100 });
+
+// Feature: todo-dashboard, Property 24: addTask rejects case-insensitive duplicate descriptions
+fc.assert(fc.property(
+  fc.string({ minLength: 1 }).filter(s => s.trim().length > 0),
+  fc.stringOf(fc.constantFrom(' ', '\t', '')),
+  (baseDesc, padding) => {
+    tasks = [];
+    addTask(baseDesc);
+    const snapshot = JSON.stringify(tasks);
+    const storedBefore = mockLocalStorage[STORAGE_KEY_TASKS];
+    // Construct a case/whitespace variant of the same description
+    const variant = padding + baseDesc.trim().toUpperCase() + padding;
+    const result = addTask(variant);
+    return result === false &&
+      JSON.stringify(tasks) === snapshot &&
+      mockLocalStorage[STORAGE_KEY_TASKS] === storedBefore;
+  }
+), { numRuns: 100 });
+
+// Feature: todo-dashboard, Property 25: sortTasks is a permutation of its input
+fc.assert(fc.property(
+  fc.array(fc.record({
+    id: fc.uuid(),
+    description: fc.string({ minLength: 1 }),
+    completed: fc.boolean(),
+    createdAt: fc.integer({ min: 0 }),
+  })),
+  fc.constantFrom('status', 'alphabetical', 'creation'),
+  (taskArray, preference) => {
+    const sorted = sortTasks(taskArray, preference);
+    const inputIds = taskArray.map(t => t.id).sort();
+    const outputIds = sorted.map(t => t.id).sort();
+    return sorted.length === taskArray.length &&
+      JSON.stringify(inputIds) === JSON.stringify(outputIds);
+  }
+), { numRuns: 100 });
+
+// Feature: todo-dashboard, Property 26: sortTasks by status groups tasks by completed state
+fc.assert(fc.property(
+  fc.array(fc.record({
+    id: fc.uuid(),
+    description: fc.string({ minLength: 1 }),
+    completed: fc.boolean(),
+    createdAt: fc.integer({ min: 0 }),
+  })),
+  (taskArray) => {
+    const sorted = sortTasks(taskArray, 'status');
+    // Once the completed value changes along the array, it must not change back.
+    let transitions = 0;
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].completed !== sorted[i - 1].completed) transitions++;
+    }
+    return transitions <= 1;
+  }
+), { numRuns: 100 });
+
+// Feature: todo-dashboard, Property 27: sortTasks alphabetical yields case-insensitive ascending order
+fc.assert(fc.property(
+  fc.array(fc.record({
+    id: fc.uuid(),
+    description: fc.string({ minLength: 1 }),
+    completed: fc.boolean(),
+    createdAt: fc.integer({ min: 0 }),
+  })),
+  (taskArray) => {
+    const sorted = sortTasks(taskArray, 'alphabetical');
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i - 1].description.toLowerCase() > sorted[i].description.toLowerCase()) {
+        return false;
+      }
+    }
+    return true;
+  }
+), { numRuns: 100 });
+
+// Feature: todo-dashboard, Property 28: sortTasks by creation order yields ascending createdAt
+fc.assert(fc.property(
+  fc.array(fc.record({
+    id: fc.uuid(),
+    description: fc.string({ minLength: 1 }),
+    completed: fc.boolean(),
+    createdAt: fc.integer({ min: 0 }),
+  })),
+  (taskArray) => {
+    const sorted = sortTasks(taskArray, 'creation');
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i - 1].createdAt > sorted[i].createdAt) return false;
+    }
+    return true;
   }
 ), { numRuns: 100 });
 ```
